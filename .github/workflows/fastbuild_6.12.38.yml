@@ -669,7 +669,7 @@ jobs:
           sudo rm -rf /opt/hostedtoolcache/CodeQL &
           make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="clang" LD="ld.lld" OBJCOPY="llvm-objcopy" O=out gki_defconfig &&
           export CC="$(pwd)/cc-wrapper" && export LD="$(pwd)/ld-wrapper" &&
-          make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="$(pwd)/cc-wrapper" LD="$(pwd)/ld-wrapper" OBJCOPY="llvm-objcopy" O=out Image modules
+          make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="$(pwd)/cc-wrapper" LD="$(pwd)/ld-wrapper" OBJCOPY="llvm-objcopy" O=out Image
 
           # 编译后时间劫持二次校验
           echo "--- 编译后环境时间: $(LD_PRELOAD=$PRELOAD_LIBS date) ---"
@@ -720,23 +720,23 @@ jobs:
             exit 1
           fi
 
-          # ===== 收集所有编译出的 .ko 模块并放入 AK3 的 modules 目录 =====
+          # ===== 收集已编译出的 .ko 模块并放入 AK3 的 modules 目录 =====
           echo "正在收集内核模块 (.ko)..."
           KVER=$(make -s -C ../common O=../common/out kernelrelease 2>/dev/null || echo "${{ env.KERNEL_VERSION }}.${{ env.SUB_VERSION }}")
           echo "内核版本号: $KVER"
-          mkdir -p ./modules/lib/modules/"$KVER"
-          KO_COUNT=0
-          while IFS= read -r ko; do
-            cp "$ko" ./modules/lib/modules/"$KVER"/
-            KO_COUNT=$((KO_COUNT + 1))
-          done < <(find ../common/out -name "*.ko" -type f)
-          echo "共收集到 $KO_COUNT 个内核模块"
-          ls -l ./modules/lib/modules/"$KVER"/ || true
-
-          # 启用 AK3 模块安装
-          if [[ -f ./anykernel.sh ]]; then
-            sed -i 's/^do\.modules=.*/do.modules=1/' ./anykernel.sh
-            grep -n '^do\.modules=' ./anykernel.sh || true
+          KO_COUNT=$(find ../common/out -name "*.ko" -type f | wc -l)
+          echo "共发现 $KO_COUNT 个内核模块"
+          if [[ "$KO_COUNT" -gt 0 ]]; then
+            mkdir -p ./modules/lib/modules/"$KVER"
+            find ../common/out -name "*.ko" -type f -exec cp {} ./modules/lib/modules/"$KVER"/ \;
+            ls -l ./modules/lib/modules/"$KVER"/ || true
+            # 启用 AK3 模块安装
+            if [[ -f ./anykernel.sh ]]; then
+              sed -i 's/^do\.modules=.*/do.modules=1/' ./anykernel.sh
+              grep -n '^do\.modules=' ./anykernel.sh || true
+            fi
+          else
+            echo "未发现 .ko 模块（当前配置可能全部为内置 =y），跳过模块打包。"
           fi
 
           if [[ ${{ github.event.inputs.ksu_type }} == "sukisu" ]]; then
@@ -877,7 +877,7 @@ jobs:
           - ADIOS IO调度器支持：${{ github.event.inputs.adios_enable }}
           - Re-Kernel支持：${{ github.event.inputs.rekernel_enable }}
           - 内核级基带保护支持：${{ github.event.inputs.baseband_guard }}
-          - 已同时编译所有内核模块(.ko)并打包进刷机包
+          - 已同时收集编译生成的所有内核模块(.ko)并打包进刷机包（无模块时自动跳过）
           - BakaSU管理器下载：[BakaSU_CI](https://github.com/cctv18/BakaSU_CI/releases)
           - SukiSU Ultra管理器下载：[SukiSU-Ultra](https://github.com/SukiSU-Ultra/SukiSU-Ultra/releases)
           - KernelSU Next管理器下载：[KernelSU-Next](https://github.com/KernelSU-Next/KernelSU-Next/releases)
