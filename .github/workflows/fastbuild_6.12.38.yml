@@ -1,4 +1,4 @@
-name: 6.12.38 NetHunter 官方架构兼容版
+name: 6.12.38 NetHunter 完美兼容版内核
 
 env:
   TZ: Asia/Shanghai
@@ -25,9 +25,11 @@ jobs:
         run: |
           mkdir -p kernel_workspace && cd kernel_workspace
           
+          echo "下载内核源码..."
           aria2c -s16 -x16 -k1M https://github.com/cctv18/android_kernel_common_oneplus_sm8845/archive/refs/heads/oneplus/sm8845_b_16.0.0_ace_6t.zip -o common.zip
           unzip -q common.zip && mv android_kernel_common_oneplus_sm8845-oneplus-sm8845_b_16.0.0_ace_6t common && rm -f common.zip
           
+          echo "下载工具链..."
           aria2c -s16 -x16 -k1M https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang19-r536225/clang-r536225.zip -o clang.zip
           mkdir -p clang19 && unzip -q clang.zip -d clang19 && rm -f clang.zip
           
@@ -37,13 +39,17 @@ jobs:
           aria2c -s16 -x16 -k1M https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang19-r536225/build-tools.zip -o build-tools.zip
           unzip -q build-tools.zip && rm -f build-tools.zip
 
-      - name: 注入配置及修改 (修复路径问题)
+      - name: 注入 NetHunter 配置 (修复环境变量)
         run: |
-          cd kernel_workspace/common  # 【已修复】必须进入 common 目录
+          cd kernel_workspace/common
           
+          # 1. 导入工具链环境变量 (必须！否则找不到 clang 和 ld.lld)
+          export PATH="$GITHUB_WORKSPACE/kernel_workspace/clang19/bin:$GITHUB_WORKSPACE/kernel_workspace/build-tools/bin:$GITHUB_WORKSPACE/kernel_workspace/rust/bin:$PATH"
+          
+          # 2. 生成基础配置
           make ARCH=arm64 LLVM=1 CC=clang O=out gki_defconfig
           
-          # 直接追加到 gki_defconfig，交由官方脚本去同步
+          # 3. 注入 NetHunter 和 基础配置
           cat << 'EOF' >> arch/arm64/configs/gki_defconfig
           CONFIG_NET=y
           CONFIG_INET=y
@@ -90,34 +96,43 @@ jobs:
           CONFIG_ANDROID_BINDER_IPC_RUST=y
           EOF
           
-          # 同步配置
+          # 4. 同步配置
           make ARCH=arm64 LLVM=1 CC=clang O=out olddefconfig
 
-      - name: 编译内核
+      - name: 编译内核 (保留完整校验)
         run: |
           cd kernel_workspace/common
+          
+          # 同样的，编译前必须重新导入环境变量
           export PATH="$GITHUB_WORKSPACE/kernel_workspace/clang19/bin:$GITHUB_WORKSPACE/kernel_workspace/build-tools/bin:$GITHUB_WORKSPACE/kernel_workspace/rust/bin:$PATH"
           
+          echo "开始全速编译..."
           make -j$(nproc --all) ARCH=arm64 LLVM=1 CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm AS=clang OBJCOPY=llvm-objcopy O=out Image modules
 
-      - name: 打包 AK3 (修复模块路径)
+      - name: 打包 AK3 (精准收集模块)
         run: |
           cd kernel_workspace
           git clone --depth=1 https://github.com/cctv18/AnyKernel3.git
           cd AnyKernel3
           
+          # 拷贝镜像
           cp ../common/out/arch/arm64/boot/Image ./Image
+          
+          # 开启模块安装
           sed -i 's/^do.modules=.*/do.modules=1/' ./anykernel.sh
           
+          # 获取真正的内核版本号
           KVER=$(cat ../common/out/include/config/kernel.release)
-          echo "Kernel Release: $KVER"
+          echo "内核版本号: $KVER"
           
+          # 收集模块到正确目录
           mkdir -p ./modules/lib/modules/"$KVER"
           find ../common/out -name "*.ko" -exec cp {} ./modules/lib/modules/"$KVER"/ \;
           
+          # 打包
           zip -r9 ../AnyKernel3_NetHunter_$KVER.zip ./*
 
-      - name: 上传
+      - name: 上传刷机包
         uses: actions/upload-artifact@v4
         with:
           name: NetHunter-Kernel-Full
