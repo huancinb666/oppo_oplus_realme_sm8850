@@ -1,29 +1,29 @@
-name: 6.12.38 NetHunter 纯配置版内核构建
+name: 6.12.38 NetHunter 完美兼容版内核
 
 env:
   TZ: Asia/Shanghai
-  ANDROID_VERSION: 'android16'
   KERNEL_VERSION: '6.12'
   SUB_VERSION: '38'
-  KERNEL_NAME: 'android16-5-g8c67d4274c0a-ab14275539-4k'
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-latest # 恢复了原作者的默认设置
+    runs-on: ubuntu-latest
     permissions:
       contents: write
       actions: read
 
     steps:
-      - name: 安装依赖及工具链
+      - name: 安装环境依赖
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends binutils python-is-python3 libssl-dev libelf-dev libdw-dev bc bison flex zip unzip aria2
-          
-          rm -rf kernel_workspace && mkdir kernel_workspace && cd kernel_workspace
+
+      - name: 下载源码及工具链
+        run: |
+          mkdir -p kernel_workspace && cd kernel_workspace
           
           echo "下载内核源码..."
           aria2c -s16 -x16 -k1M https://github.com/cctv18/android_kernel_common_oneplus_sm8845/archive/refs/heads/oneplus/sm8845_b_16.0.0_ace_6t.zip -o common.zip
@@ -39,15 +39,14 @@ jobs:
           aria2c -s16 -x16 -k1M https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang19-r536225/build-tools.zip -o build-tools.zip
           unzip -q build-tools.zip && rm -f build-tools.zip
 
-      - name: 注入 NetHunter 配置文件与魔改基础配置
+      - name: 注入 NetHunter 配置 (不关任何校验)
         run: |
           cd kernel_workspace
-          echo "生成基础配置..."
           make ARCH=arm64 LLVM=1 CC=clang O=out gki_defconfig
           
-          echo "写入 NetHunter 全量配置文件..."
+          # 注入 NetHunter 和基础配置
           cat << 'EOF' >> out/.config
-          # NetHunter 基础设施
+          # 基础设施
           CONFIG_NET=y
           CONFIG_INET=y
           CONFIG_MODULES=y
@@ -57,7 +56,7 @@ jobs:
           CONFIG_NETDEVICES=y
           CONFIG_NET_CORE=y
           
-          # 无线抓包与注入框架
+          # 无线抓包与注入
           CONFIG_WIRELESS=y
           CONFIG_CFG80211=y
           CONFIG_CFG80211_WEXT=y
@@ -68,7 +67,7 @@ jobs:
           CONFIG_RFKILL=y
           CONFIG_RFKILL_INPUT=y
           
-          # 常见 USB 无线网卡驱动 (主推 MT76 系列)
+          # 网卡驱动
           CONFIG_USB_USBNET=y
           CONFIG_MT7601U=y
           CONFIG_MT76x0U=y
@@ -80,67 +79,60 @@ jobs:
           CONFIG_ATH9K_HTC=y
           CONFIG_CARL9170=y
           CONFIG_RT2800USB=y
-          CONFIG_RT2800USB_RT33XX=y
-          CONFIG_RT2800USB_RT35XX=y
-          CONFIG_RT2800USB_RT53XX=y
-          CONFIG_RT2800USB_RT55XX=y
           
-          # HID 模拟 (BadUSB)
+          # HID & RNDIS
           CONFIG_HID=y
           CONFIG_HID_GENERIC=y
           CONFIG_USB_HID=y
           CONFIG_USB_HIDDEV=y
           CONFIG_USB_CONFIGFS_F_HID=y
-          
-          # RNDIS 与 USB 网络共享
           CONFIG_USB_CONFIGFS_F_RNDIS=y
           CONFIG_USB_CONFIGFS_F_MASS_STORAGE=y
           CONFIG_USB_CONFIGFS_F_FS=y
           CONFIG_USB_NET_RNDIS_HOST=y
           CONFIG_USB_NET_CDCETHER=y
-          CONFIG_USB_NET_CDC_NCM=y
           
-          # 基础文件系统与附加项
+          # 基础优化
           CONFIG_TMPFS_XATTR=y
           CONFIG_TMPFS_POSIX_ACL=y
           CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y
           CONFIG_HEADERS_INSTALL=n
           EOF
           
-          echo "解决 Rust 报错，强制关闭 MODVERSIONS..."
-          echo "# CONFIG_MODVERSIONS is not set" >> out/.config
-          echo "# CONFIG_GENDWARFKSYMS is not set" >> out/.config
-          
-          echo "同步最终配置..."
+          # 同步配置，让系统自动处理依赖
           make ARCH=arm64 LLVM=1 CC=clang O=out olddefconfig
 
-      - name: 开始构建内核
+      - name: 编译内核 (保留完整校验)
         run: |
           cd kernel_workspace
           export PATH="$PWD/clang19/bin:$PWD/build-tools/bin:$PWD/rust/bin:$PATH"
           
-          echo "开始全速编译..."
+          # 强制使用新版 clang 和 ld，保证 gendwarfksyms 正常工作
           make -j$(nproc --all) ARCH=arm64 LLVM=1 CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm AS=clang OBJCOPY=llvm-objcopy O=out Image modules
 
-      - name: 打包 AK3 纯镜像刷机包
+      - name: 打包并强制修正模块路径
         run: |
           cd kernel_workspace
           git clone --depth=1 https://github.com/cctv18/AnyKernel3.git
           cd AnyKernel3
           
-          # 拷贝镜像
           cp ../common/out/arch/arm64/boot/Image ./Image
           
-          # 取消模块安装 (纯净版仅替换 Image)
-          sed -i 's/^do.modules=.*/do.modules=0/' ./anykernel.sh
+          # 强制设为 1，把模块也打包进去
+          sed -i 's/^do.modules=.*/do.modules=1/' ./anykernel.sh
           
-          # 获取版本号并打包
+          # 获取准确的内核版本号 (关键修正)
           KVER=$(cat ../common/out/include/config/kernel.release)
+          echo "内核版本号: $KVER"
+          
+          # 收集所有 ko 到正确路径
+          mkdir -p ./modules/lib/modules/"$KVER"
+          find ../common/out -name "*.ko" -exec cp {} ./modules/lib/modules/"$KVER"/ \;
+          
           zip -r9 ../AnyKernel3_NetHunter_$KVER.zip ./*
-          echo "AK3_ZIP=AnyKernel3_NetHunter_$KVER.zip" >> $GITHUB_ENV
 
       - name: 上传刷机包
         uses: actions/upload-artifact@v4
         with:
-          name: NetHunter-Kernel-Image
-          path: kernel_workspace/${{ env.AK3_ZIP }}
+          name: NetHunter-Kernel-Full
+          path: kernel_workspace/AnyKernel3_NetHunter_*.zip
