@@ -1,4 +1,4 @@
-name: 6.12.38 NetHunter 完美兼容版内核
+name: 6.12.38 极简网卡增强版内核(全驱动打包)
 
 env:
   TZ: Asia/Shanghai
@@ -25,11 +25,9 @@ jobs:
         run: |
           mkdir -p kernel_workspace && cd kernel_workspace
           
-          echo "下载内核源码..."
           aria2c -s16 -x16 -k1M https://github.com/cctv18/android_kernel_common_oneplus_sm8845/archive/refs/heads/oneplus/sm8845_b_16.0.0_ace_6t.zip -o common.zip
           unzip -q common.zip && mv android_kernel_common_oneplus_sm8845-oneplus-sm8845_b_16.0.0_ace_6t common && rm -f common.zip
           
-          echo "下载工具链..."
           aria2c -s16 -x16 -k1M https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang19-r536225/clang-r536225.zip -o clang.zip
           mkdir -p clang19 && unzip -q clang.zip -d clang19 && rm -f clang.zip
           
@@ -39,101 +37,65 @@ jobs:
           aria2c -s16 -x16 -k1M https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang19-r536225/build-tools.zip -o build-tools.zip
           unzip -q build-tools.zip && rm -f build-tools.zip
 
-      - name: 注入 NetHunter 配置 (修复环境变量)
+      - name: 注入极简网卡配置 (一行一行 echo 写入)
         run: |
           cd kernel_workspace/common
-          
-          # 1. 导入工具链环境变量 (必须！否则找不到 clang 和 ld.lld)
           export PATH="$GITHUB_WORKSPACE/kernel_workspace/clang19/bin:$GITHUB_WORKSPACE/kernel_workspace/build-tools/bin:$GITHUB_WORKSPACE/kernel_workspace/rust/bin:$PATH"
           
-          # 2. 生成基础配置
           make ARCH=arm64 LLVM=1 CC=clang O=out gki_defconfig
           
-          # 3. 注入 NetHunter 和 基础配置
-          cat << 'EOF' >> arch/arm64/configs/gki_defconfig
-          CONFIG_NET=y
-          CONFIG_INET=y
-          CONFIG_MODULES=y
-          CONFIG_USB_SUPPORT=y
-          CONFIG_USB_GADGET=y
-          CONFIG_USB_CONFIGFS=y
-          CONFIG_NETDEVICES=y
-          CONFIG_NET_CORE=y
-          CONFIG_WIRELESS=y
-          CONFIG_CFG80211=y
-          CONFIG_CFG80211_WEXT=y
-          CONFIG_MAC80211=y
-          CONFIG_MAC80211_MESH=y
-          CONFIG_MAC80211_LEDS=y
-          CONFIG_MAC80211_DEBUGFS=y
-          CONFIG_RFKILL=y
-          CONFIG_RFKILL_INPUT=y
-          CONFIG_USB_USBNET=y
-          CONFIG_MT7601U=y
-          CONFIG_MT76x0U=y
-          CONFIG_MT76x2U=y
-          CONFIG_RTL8187=y
-          CONFIG_RTL8192CU=y
-          CONFIG_RTL8XXXU=y
-          CONFIG_RTL8XXXU_UNTESTED=y
-          CONFIG_ATH9K_HTC=y
-          CONFIG_CARL9170=y
-          CONFIG_RT2800USB=y
-          CONFIG_HID=y
-          CONFIG_HID_GENERIC=y
-          CONFIG_USB_HID=y
-          CONFIG_USB_HIDDEV=y
-          CONFIG_USB_CONFIGFS_F_HID=y
-          CONFIG_USB_CONFIGFS_F_RNDIS=y
-          CONFIG_USB_CONFIGFS_F_MASS_STORAGE=y
-          CONFIG_USB_CONFIGFS_F_FS=y
-          CONFIG_USB_NET_RNDIS_HOST=y
-          CONFIG_USB_NET_CDCETHER=y
-          CONFIG_TMPFS_XATTR=y
-          CONFIG_TMPFS_POSIX_ACL=y
-          CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y
-          CONFIG_HEADERS_INSTALL=n
-          CONFIG_ANDROID_BINDER_IPC_RUST=y
-          EOF
+          echo "CONFIG_USB_USBNET=m" >> arch/arm64/configs/gki_defconfig
+          echo "CONFIG_USB_NET_CDCETHER=m" >> arch/arm64/configs/gki_defconfig
+          echo "CONFIG_MT7601U=m" >> arch/arm64/configs/gki_defconfig
+          echo "CONFIG_MT76x0U=m" >> arch/arm64/configs/gki_defconfig
+          echo "CONFIG_MT76x2U=m" >> arch/arm64/configs/gki_defconfig
+          echo "CONFIG_RTL8187=m" >> arch/arm64/configs/gki_defconfig
+          echo "CONFIG_RTL8192CU=m" >> arch/arm64/configs/gki_defconfig
+          echo "CONFIG_RTL8XXXU=m" >> arch/arm64/configs/gki_defconfig
+          echo "CONFIG_RTL8XXXU_UNTESTED=m" >> arch/arm64/configs/gki_defconfig
+          echo "CONFIG_ATH9K_HTC=m" >> arch/arm64/configs/gki_defconfig
+          echo "CONFIG_CARL9170=m" >> arch/arm64/configs/gki_defconfig
+          echo "CONFIG_RT2800USB=m" >> arch/arm64/configs/gki_defconfig
+          echo "CONFIG_CFG80211=m" >> arch/arm64/configs/gki_defconfig
+          echo "CONFIG_MAC80211=m" >> arch/arm64/configs/gki_defconfig
+          echo "CONFIG_CFG80211_WEXT=y" >> arch/arm64/configs/gki_defconfig
+          echo "CONFIG_RFKILL=m" >> arch/arm64/configs/gki_defconfig
           
-          # 4. 同步配置
           make ARCH=arm64 LLVM=1 CC=clang O=out olddefconfig
 
-      - name: 编译内核 (保留完整校验)
+      - name: 编译内核
         run: |
           cd kernel_workspace/common
-          
-          # 同样的，编译前必须重新导入环境变量
           export PATH="$GITHUB_WORKSPACE/kernel_workspace/clang19/bin:$GITHUB_WORKSPACE/kernel_workspace/build-tools/bin:$GITHUB_WORKSPACE/kernel_workspace/rust/bin:$PATH"
-          
-          echo "开始全速编译..."
           make -j$(nproc --all) ARCH=arm64 LLVM=1 CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm AS=clang OBJCOPY=llvm-objcopy O=out Image modules
 
-      - name: 打包 AK3 (精准收集模块)
+      - name: 打包 AK3 (打包全部独立模块)
         run: |
           cd kernel_workspace
           git clone --depth=1 https://github.com/cctv18/AnyKernel3.git
           cd AnyKernel3
           
-          # 拷贝镜像
           cp ../common/out/arch/arm64/boot/Image ./Image
           
-          # 开启模块安装
+          # 开启模块推送
           sed -i 's/^do.modules=.*/do.modules=1/' ./anykernel.sh
           
-          # 获取真正的内核版本号
           KVER=$(cat ../common/out/include/config/kernel.release)
           echo "内核版本号: $KVER"
           
-          # 收集模块到正确目录
           mkdir -p ./modules/lib/modules/"$KVER"
+          
+          # 【全量抓取】把 out 目录下所有的 .ko 文件全部复制进刷机包
           find ../common/out -name "*.ko" -exec cp {} ./modules/lib/modules/"$KVER"/ \;
           
-          # 打包
-          zip -r9 ../AnyKernel3_NetHunter_$KVER.zip ./*
+          # 顺便统计一下带了多少个模块
+          KO_COUNT=$(ls -1 ./modules/lib/modules/"$KVER"/*.ko | wc -l)
+          echo "共打包了 $KO_COUNT 个内核模块！"
+          
+          zip -r9 ../AnyKernel3_AllWifi_$KVER.zip ./*
 
       - name: 上传刷机包
         uses: actions/upload-artifact@v4
         with:
-          name: NetHunter-Kernel-Full
-          path: kernel_workspace/AnyKernel3_NetHunter_*.zip
+          name: All-Wifi-Kernel
+          path: kernel_workspace/AnyKernel3_AllWifi_*.zip
