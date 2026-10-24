@@ -1,4 +1,4 @@
-name: (通用GKI) 6.12.69 GKI内核构建 (纯净网卡驱动完整修复版)
+name: (通用GKI) 6.12.69 GKI内核构建 (纯净网卡驱动终极防呆版)
 
 env:
   TZ: Asia/Shanghai
@@ -33,7 +33,7 @@ on:
         type: boolean
         default: false
       lz4_enable:
-        description: '安装 lz4+zstd 补丁 (注意：如果遇到zram报错请关闭此项)'
+        description: '安装 lz4+zstd 补丁 (如果遇到zram报错请关闭此项)'
         required: true
         type: boolean
         default: true
@@ -489,7 +489,7 @@ jobs:
           sed -i 's/${scm_version}//' ./common/scripts/setlocalversion
           echo "CONFIG_LOCALVERSION_AUTO=n" >> ./common/arch/arm64/configs/gki_defconfig
 
-      - name: 构建内核 (终极修复版)
+      - name: 构建内核 (纯净编译，终极修复版)
         run: |
           WORKDIR="$(pwd)"
           export PATH="/usr/lib/ccache:$PATH"
@@ -516,7 +516,7 @@ jobs:
           sed -i 's/int rt2x00soc_remove(struct platform_device \*pdev)/void rt2x00soc_remove(struct platform_device *pdev)/' drivers/net/wireless/ralink/rt2x00/rt2x00soc.c
           sed -i 's/int rt2x00soc_remove(struct platform_device \*pdev);/void rt2x00soc_remove(struct platform_device *pdev);/' drivers/net/wireless/ralink/rt2x00/rt2x00soc.h
           
-          # 2. 修复 6.12 已经废弃的 strlcpy 函数报错 (部分老旧网卡驱动还在用)
+          # 2. 修复 6.12 已经废弃的 strlcpy 函数报错
           find drivers/net/wireless/ -type f -name "*.c" -exec sed -i 's/strlcpy/strscpy/g' {} +
           # ============================================
           
@@ -581,8 +581,8 @@ jobs:
           rm -f Image
           mv oImage Image
 
-      # ================= 收集 KO 模块并打包 =================
-      - name: 克隆 AnyKernel3 并打包 (包含 RT5572 模块)
+      # ================= 终极防呆版打包逻辑 =================
+      - name: 克隆 AnyKernel3 并精准打包 (包含 RT5572 模块)
         id: create_zip
         run: |
           cd kernel_workspace
@@ -596,23 +596,25 @@ jobs:
             exit 1
           fi
 
-          # 收集所有 .ko 模块
-          echo "正在收集所有编译出的 .ko 模块..."
-          KO_FILES=$(find ../common/out -name "*.ko")
+          # 收集所有 .ko 模块，使用精准搜索，防止鬼打墙
+          echo "正在收集编译出的 .ko 模块..."
+          mkdir -p modules/vendor/lib/modules/
+          
+          # 只在 net 和 drivers 目录下搜索，且限定最大搜索深度，杜绝把 Python 库打包进去
+          KO_FILES=$(find ../common/out/drivers ../common/out/net -maxdepth 8 -name "*.ko" -type f)
           
           if [ -n "$KO_FILES" ]; then
-            mkdir -p modules/vendor/lib/modules/
-            
             for ko in $KO_FILES; do
-              echo "收集模块: $ko"
-              cp "$ko" modules/vendor/lib/modules/
+              # cp --parents 可以完美保留原始目录结构
+              cp --parents -f "$ko" modules/vendor/lib/modules/
+              echo "收集: $(basename $ko)"
             done
             
             cd modules/vendor/lib/modules/
             echo "生成 modules.load..."
-            ls *.ko > modules.load
+            find . -name "*.ko" | sed 's|^\./||' > modules.load
             cd ../../../../../
-            echo "模块收集完毕。"
+            echo "模块收集完毕，共计 $(wc -l < modules/vendor/lib/modules/modules.load) 个。"
           else
             echo "未找到 .ko 模块，跳过。"
           fi
@@ -720,11 +722,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cat << 'EOF' > release_notes.md
-          ### 📱 GKI 通用内核 (纯净版终极修复)
+          ### 📱 GKI 通用内核 (纯净版终极防呆打包)
           - 编译时间: ${{ env.TIME }}
           - KSU分支：${{ env.KSU_TYPENAME }}
           - 无线支持: RT5572 等外置网卡
-          - 已修复：zram-zstd 冲突、rt2x00 返回值类型、strlcpy 废弃问题。
+          - 修复了打包无限嵌套源码的问题，刷机包体积恢复正常。
           EOF
 
           gh release create "${{ env.TAG_HEAD }}-${{ env.TIME }}" \
