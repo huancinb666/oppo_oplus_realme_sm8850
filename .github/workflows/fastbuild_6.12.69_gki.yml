@@ -1,4 +1,4 @@
-name: (通用GKI) 6.12.69 GKI内核构建 (纯净网卡驱动版修复版)
+name: (通用GKI) 6.12.69 GKI内核构建 (纯净网卡驱动完整修复版)
 
 env:
   TZ: Asia/Shanghai
@@ -33,7 +33,7 @@ on:
         type: boolean
         default: false
       lz4_enable:
-        description: '安装 lz4+zstd 补丁'
+        description: '安装 lz4+zstd 补丁 (注意：如果遇到zram报错请关闭此项)'
         required: true
         type: boolean
         default: true
@@ -321,6 +321,11 @@ jobs:
       - name: 添加 KSU & 其他配置项
         run: |
           cd kernel_workspace
+          
+          # === 强制禁用导致编译报错的 ZRAM Zstd，改用 LZ4 ===
+          echo "CONFIG_ZRAM_BACKEND_ZSTD=n" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_ZRAM_BACKEND_LZ4=y" >> ./common/arch/arm64/configs/gki_defconfig
+          
           echo "CONFIG_KSU=y" >> ./common/arch/arm64/configs/gki_defconfig
           if [[ "${{ github.event.inputs.susfs_enable }}" == "false" ]]; then
             echo "CONFIG_KSU_SUSFS=n" >> ./common/arch/arm64/configs/gki_defconfig
@@ -484,7 +489,7 @@ jobs:
           sed -i 's/${scm_version}//' ./common/scripts/setlocalversion
           echo "CONFIG_LOCALVERSION_AUTO=n" >> ./common/arch/arm64/configs/gki_defconfig
 
-      - name: 构建内核 (纯净编译，包含 rt2x00 修复)
+      - name: 构建内核 (终极修复版)
         run: |
           WORKDIR="$(pwd)"
           export PATH="/usr/lib/ccache:$PATH"
@@ -506,9 +511,13 @@ jobs:
           cd kernel_workspace/common
           
           # ================= 关键修复 =================
-          echo "正在修复 Linux 6.12 的 rt2x00 编译兼容性问题..."
+          echo "正在修复 Linux 6.12 内核历史遗留的兼容性问题..."
+          # 1. 修复 rt2x00 platform_driver remove 返回值问题
           sed -i 's/int rt2x00soc_remove(struct platform_device \*pdev)/void rt2x00soc_remove(struct platform_device *pdev)/' drivers/net/wireless/ralink/rt2x00/rt2x00soc.c
           sed -i 's/int rt2x00soc_remove(struct platform_device \*pdev);/void rt2x00soc_remove(struct platform_device *pdev);/' drivers/net/wireless/ralink/rt2x00/rt2x00soc.h
+          
+          # 2. 修复 6.12 已经废弃的 strlcpy 函数报错 (部分老旧网卡驱动还在用)
+          find drivers/net/wireless/ -type f -name "*.c" -exec sed -i 's/strlcpy/strscpy/g' {} +
           # ============================================
           
           export CC="clang"
@@ -711,11 +720,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cat << 'EOF' > release_notes.md
-          ### 📱 GKI 通用内核 (纯净版修复)
+          ### 📱 GKI 通用内核 (纯净版终极修复)
           - 编译时间: ${{ env.TIME }}
           - KSU分支：${{ env.KSU_TYPENAME }}
           - 无线支持: RT5572 等外置网卡
-          - 已修复 6.12 内核编译 rt2x00 驱动的报错。
+          - 已修复：zram-zstd 冲突、rt2x00 返回值类型、strlcpy 废弃问题。
           EOF
 
           gh release create "${{ env.TAG_HEAD }}-${{ env.TIME }}" \
