@@ -1,4 +1,4 @@
-name: (通用GKI) 6.12.69 GKI内核构建 (纯净网卡驱动版)
+name: (通用GKI) 6.12.69 GKI内核构建 (纯净网卡驱动版修复版)
 
 env:
   TZ: Asia/Shanghai
@@ -484,7 +484,7 @@ jobs:
           sed -i 's/${scm_version}//' ./common/scripts/setlocalversion
           echo "CONFIG_LOCALVERSION_AUTO=n" >> ./common/arch/arm64/configs/gki_defconfig
 
-      - name: 构建内核 (纯净编译，无时间伪造)
+      - name: 构建内核 (纯净编译，包含 rt2x00 修复)
         run: |
           WORKDIR="$(pwd)"
           export PATH="/usr/lib/ccache:$PATH"
@@ -504,6 +504,12 @@ jobs:
           echo "sloppiness = file_stat_matches,include_file_ctime,include_file_mtime,pch_defines,file_macro,time_macros" >> "$CCACHE_DIR/ccache.conf"
           
           cd kernel_workspace/common
+          
+          # ================= 关键修复 =================
+          echo "正在修复 Linux 6.12 的 rt2x00 编译兼容性问题..."
+          sed -i 's/int rt2x00soc_remove(struct platform_device \*pdev)/void rt2x00soc_remove(struct platform_device *pdev)/' drivers/net/wireless/ralink/rt2x00/rt2x00soc.c
+          sed -i 's/int rt2x00soc_remove(struct platform_device \*pdev);/void rt2x00soc_remove(struct platform_device *pdev);/' drivers/net/wireless/ralink/rt2x00/rt2x00soc.h
+          # ============================================
           
           export CC="clang"
           export LD="ld.lld"
@@ -705,11 +711,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cat << 'EOF' > release_notes.md
-          ### 📱 GKI 通用内核 (纯净版)
+          ### 📱 GKI 通用内核 (纯净版修复)
           - 编译时间: ${{ env.TIME }}
           - KSU分支：${{ env.KSU_TYPENAME }}
-          - 无线支持: RT5572 等外置网卡 (纯净驱动，无修改注入)
-          - 安装：使用 KernelFlasher 备份 boot 后刷入。
+          - 无线支持: RT5572 等外置网卡
+          - 已修复 6.12 内核编译 rt2x00 驱动的报错。
           EOF
 
           gh release create "${{ env.TAG_HEAD }}-${{ env.TIME }}" \
