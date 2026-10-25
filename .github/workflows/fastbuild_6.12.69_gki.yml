@@ -371,15 +371,6 @@ jobs:
             echo "CONFIG_CRYPTO_LZ4K=y" >> ./common/arch/arm64/configs/gki_defconfig
             echo "CONFIG_CRYPTO_LZ4KD=y" >> ./common/arch/arm64/configs/gki_defconfig
             echo "CONFIG_CRYPTO_842=y" >> ./common/arch/arm64/configs/gki_defconfig
-            # ====== 强行外挂网卡模块 ======
-            echo "CONFIG_WLAN=y" >> ./common/arch/arm64/configs/gki_defconfig
-            echo "CONFIG_WLAN_VENDOR_RALINK=y" >> ./common/arch/arm64/configs/gki_defconfig
-            echo "CONFIG_RT2X00=m" >> ./common/arch/arm64/configs/gki_defconfig
-            echo "CONFIG_RT2X00_LIB_USB=m" >> ./common/arch/arm64/configs/gki_defconfig
-            echo "CONFIG_RT2X00_LIB_FIRMWARE=y" >> ./common/arch/arm64/configs/gki_defconfig
-            echo "CONFIG_RT2X00_LIB_CRYPTO=y" >> ./common/arch/arm64/configs/gki_defconfig
-            echo "CONFIG_RT2800USB=m" >> ./common/arch/arm64/configs/gki_defconfig
-            echo "CONFIG_RT2800USB_RT55XX=m" >> ./common/arch/arm64/configs/gki_defconfig
             #以下配置选项用于编译zram模块，开启与否不影响内核编译
             echo "CONFIG_ZRAM_BACKEND_LZ4HC=y" >> ./common/arch/arm64/configs/gki_defconfig
             echo "CONFIG_ZRAM_BACKEND_LZ4K=y" >> ./common/arch/arm64/configs/gki_defconfig
@@ -413,6 +404,18 @@ jobs:
           echo "CONFIG_IP_SET_BITMAP_IP=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_IP_SET_BITMAP_IPMAC=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_IP_SET_BITMAP_PORT=y" >> ./common/arch/arm64/configs/gki_defconfig
+
+          echo "CONFIG_WLAN=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_WLAN_VENDOR_RALINK=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_CFG80211=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_MAC80211=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_CFG80211_WEXT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_RT2X00=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_RT2X00_LIB_USB=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_RT2X00_LIB_FIRMWARE=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_RT2X00_LIB_CRYPTO=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_RT2800USB=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_RT2800USB_RT55XX=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_IP_SET_HASH_IP=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_IP_SET_HASH_IPMARK=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_IP_SET_HASH_IPPORT=y" >> ./common/arch/arm64/configs/gki_defconfig
